@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SRT → Single Paragraph</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;line-height:1.35;padding:18px;background:#f7f8fb}
+  h1{margin:0 0 12px;font-size:18px}
+  .wrap{display:flex;gap:12px;flex-wrap:wrap}
+  textarea{width:100%;min-height:320px;padding:10px;border:1px solid #cfd8e3;border-radius:6px;box-sizing:border-box;font-family:ui-monospace,monospace}
+  .col{flex:1;min-width:300px}
+  .controls{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap}
+  button{background:#176be8;color:white;border:0;padding:8px 12px;border-radius:6px;cursor:pointer}
+  button.secondary{background:#e6eefc;color:#064; border:1px solid #cbdff9}
+  .note{font-size:13px;color:#555;margin-top:8px}
+  .footer{margin-top:18px;color:#666;font-size:13px}
+</style>
+</head>
+<body>
+  <h1>SRT / transcript → single paragraph</h1>
+  <div class="wrap">
+    <div class="col">
+      <label><strong>Paste SRT / transcript here</strong></label>
+      <textarea id="input" placeholder="Paste your transcript (SRT or similar) here…"></textarea>
+    </div>
+    <div class="col">
+      <label><strong>Output (single paragraph)</strong></label>
+      <textarea id="output" readonly placeholder="Converted paragraph will appear here"></textarea>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="convert">Convert</button>
+    <button id="copy" class="secondary">Copy to clipboard</button>
+    <button id="download" class="secondary">Download .txt</button>
+    <button id="clear" class="secondary">Clear</button>
+  </div>
+
+  <div class="note">
+    Tips: This strips SRT-style numbers and timestamps (lines like <code>00:05:13,090 --&gt; 00:05:15,390</code>), converts linebreaks to spaces,
+    joins hyphenated words across lines, and fixes spacing around punctuation.
+  </div>
+
+<script>
+(function(){
+  const inEl = document.getElementById('input');
+  const outEl = document.getElementById('output');
+  const convertBtn = document.getElementById('convert');
+  const copyBtn = document.getElementById('copy');
+  const dlBtn = document.getElementById('download');
+  const clearBtn = document.getElementById('clear');
+
+  function isTimestampLine(s){
+    // matches: 00:00:00,000 --> 00:00:03,000 (or similar)
+    return /^\s*\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}\s*$/.test(s);
+  }
+  function isIndexLine(s){
+    return /^\s*\d+\s*$/.test(s);
+  }
+
+  function convert(text){
+    const lines = text.split(/\r?\n/);
+    let out = '';
+    for (let rawLine of lines){
+      const line = rawLine.trim();
+      if (!line) continue;                  // skip blank lines
+      if (isIndexLine(line)) continue;      // skip sequence number lines
+      if (isTimestampLine(line)) continue;  // skip timestamps
+      // If there's markup like [laughter] or speaker labels, we keep them.
+      if (!out){
+        out = line;
+      } else {
+        // If previous out ends with a hyphen, combine without space
+        if (out.endsWith('-')) {
+          out = out.slice(0, -1) + line;
+        } else {
+          out += ' ' + line;
+        }
+      }
+    }
+
+    // Normalize whitespace
+    out = out.replace(/\s+/g, ' ').trim();
+
+    // Remove spaces before punctuation (e.g. "word , " -> "word,")
+    out = out.replace(/\s+([,;:.!?])+/g, '$1');
+
+    // Ensure there's exactly one space after punctuation if followed by a letter/digit
+    out = out.replace(/([,;:.!?])([^\s])/g, '$1 $2');
+
+    // Fix any stray spaces around parentheses
+    out = out.replace(/\s+\(/g, ' (').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')');
+
+    return out;
+  }
+
+  convertBtn.addEventListener('click', () => {
+    const txt = inEl.value;
+    const res = convert(txt);
+    outEl.value = res;
+    if (!res) alert('No text found — make sure you pasted the transcript (SRT) into the left box.');
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(outEl.value);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(()=> copyBtn.textContent = 'Copy to clipboard', 900);
+    } catch(e){
+      alert('Copy failed — select and copy manually.');
+    }
+  });
+
+  dlBtn.addEventListener('click', () => {
+    const blob = new Blob([outEl.value], {type:'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'transcript_paragraph.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  clearBtn.addEventListener('click', ()=>{
+    inEl.value = '';
+    outEl.value = '';
+  });
+
+  // Optional: Ctrl+Enter to convert
+  inEl.addEventListener('keydown', (e)=>{
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      convertBtn.click();
+    }
+  });
+})();
+</script>
+</body>
+</html>
